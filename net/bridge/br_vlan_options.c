@@ -5,8 +5,10 @@
 #include <linux/rtnetlink.h>
 #include <linux/slab.h>
 #include <net/ip_tunnels.h>
+#include <net/switchdev.h>
 
 #include "br_private.h"
+#include "br_private_stp.h"
 #include "br_private_tunnel.h"
 
 static bool __vlan_tun_put(struct sk_buff *skb, const struct net_bridge_vlan *v)
@@ -92,6 +94,7 @@ static int br_vlan_modify_state(struct net_bridge_vlan_group *vg,
 				bool *changed,
 				struct netlink_ext_ack *extack)
 {
+	struct net_bridge_port *p = NULL;
 	struct net_bridge *br;
 
 	ASSERT_RTNL();
@@ -103,8 +106,10 @@ static int br_vlan_modify_state(struct net_bridge_vlan_group *vg,
 
 	if (br_vlan_is_brentry(v))
 		br = v->br;
-	else
+	else {
+		p = v->port;
 		br = v->port->br;
+	}
 
 	if (br->stp_enabled == BR_KERNEL_STP) {
 		NL_SET_ERR_MSG_MOD(extack, "Can't modify vlan state when using kernel STP");
@@ -118,6 +123,27 @@ static int br_vlan_modify_state(struct net_bridge_vlan_group *vg,
 
 	if (v->state == state)
 		return 0;
+
+	if (p) {
+		struct switchdev_attr attr = {
+			.id = SWITCHDEV_ATTR_ID_PORT_VLAN_STATE,
+			.orig_dev = p->dev,
+			.u.vlan_state = {
+				.vid = v->vid,
+				.state = state,
+			},
+		};
+		int err;
+
+		err = switchdev_port_attr_set(p->dev, &attr, NULL);
+		if (err && err != -EOPNOTSUPP)
+			br_warn(p->br, "error setting offload STP state on port %u(%s) VLAN %u\n",
+					(unsigned int) p->port_no, p->dev->name, (unsigned int) v->vid);
+		else
+			br_info(p->br, "port %u(%s) VLAN %u entered %s state\n",
+					(unsigned int) p->port_no, p->dev->name, (unsigned int) v->vid,
+					br_port_state_names[v->state]);
+	}
 
 	if (v->vid == br_get_pvid(vg))
 		br_vlan_set_pvid_state(vg, state);

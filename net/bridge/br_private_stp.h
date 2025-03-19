@@ -47,6 +47,8 @@ static inline int br_is_designated_port(const struct net_bridge_port *p)
 
 
 /* br_stp.c */
+extern const char *const br_port_state_names[];
+
 void br_become_root_bridge(struct net_bridge *br);
 void br_config_bpdu_generation(struct net_bridge *);
 void br_configuration_update(struct net_bridge *);

@@ -31,6 +31,7 @@ enum switchdev_attr_id {
 	SWITCHDEV_ATTR_ID_BRIDGE_MST,
 	SWITCHDEV_ATTR_ID_MRP_PORT_ROLE,
 	SWITCHDEV_ATTR_ID_VLAN_MSTI,
+	SWITCHDEV_ATTR_ID_PORT_VLAN_STATE,
 };
 
 struct switchdev_mst_state {
@@ -46,6 +47,11 @@ struct switchdev_brport_flags {
 struct switchdev_vlan_msti {
 	u16 vid;
 	u16 msti;
+};
+
+struct switchdev_vlan_state {
+	u16 vid;
+	u8 state;
 };
 
 struct switchdev_attr {
@@ -66,6 +72,7 @@ struct switchdev_attr {
 		bool mc_disabled;			/* MC_DISABLED */
 		u8 mrp_port_role;			/* MRP_PORT_ROLE */
 		struct switchdev_vlan_msti vlan_msti;	/* VLAN_MSTI */
+		struct switchdev_vlan_state vlan_state;	/* VLAN_STATE */
 	} u;
 };
 
