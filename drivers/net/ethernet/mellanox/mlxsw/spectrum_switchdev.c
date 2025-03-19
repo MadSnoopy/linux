@@ -76,6 +76,7 @@ struct mlxsw_sp_bridge_vlan {
 	struct list_head list;
 	struct list_head port_vlan_list;
 	u16 vid;
+	u8 state;
 };
 
 struct mlxsw_sp_bridge_ops {
@@ -631,6 +632,7 @@ mlxsw_sp_bridge_vlan_create(struct mlxsw_sp_bridge_port *bridge_port, u16 vid)
 
 	INIT_LIST_HEAD(&bridge_vlan->port_vlan_list);
 	bridge_vlan->vid = vid;
+	bridge_vlan->state = BR_STATE_FORWARDING;
 	list_add(&bridge_vlan->list, &bridge_port->vlans_list);
 
 	return bridge_vlan;
@@ -662,6 +664,23 @@ static void mlxsw_sp_bridge_vlan_put(struct mlxsw_sp_bridge_vlan *bridge_vlan)
 		mlxsw_sp_bridge_vlan_destroy(bridge_vlan);
 }
 
+/* We want compatibility with sw bridge model, */
+/* so we are limiting VLAN State by Port State */
+/* Would be easier, but STP states are not in correct order */
+static u8
+mlxws_sp_bridge_vlan_stp_actual(struct mlxsw_sp_bridge_vlan *bridge_vlan,
+				u8 port_state)
+{
+	u8 vlan_state = bridge_vlan->state;
+
+	if (port_state == BR_STATE_DISABLED)
+		return port_state;
+	if ((port_state == BR_STATE_BLOCKING) ||
+	    (vlan_state == BR_STATE_BLOCKING))
+		return BR_STATE_BLOCKING;
+	return (vlan_state < port_state) ? vlan_state : port_state;
+}
+
 static int
 mlxsw_sp_port_bridge_vlan_stp_set(struct mlxsw_sp_port *mlxsw_sp_port,
 				  struct mlxsw_sp_bridge_vlan *bridge_vlan,
@@ -673,8 +692,10 @@ mlxsw_sp_port_bridge_vlan_stp_set(struct mlxsw_sp_port *mlxsw_sp_port,
 			    bridge_vlan_node) {
 		if (mlxsw_sp_port_vlan->mlxsw_sp_port != mlxsw_sp_port)
 			continue;
+		u8 act_state = mlxws_sp_bridge_vlan_stp_actual(bridge_vlan,
+							       state);
 		return mlxsw_sp_port_vid_stp_set(mlxsw_sp_port,
-						 bridge_vlan->vid, state);
+						 bridge_vlan->vid, act_state);
 	}
 
 	return 0;
@@ -713,6 +734,32 @@ err_port_bridge_vlan_stp_set:
 		mlxsw_sp_port_bridge_vlan_stp_set(mlxsw_sp_port, bridge_vlan,
 						  bridge_port->stp_state);
 	return err;
+}
+
+static int mlxsw_sp_port_attr_vlan_state_set(struct mlxsw_sp_port *mlxsw_sp_port,
+					     struct net_device *orig_dev,
+					     u16 vid,
+					     u8 state)
+{
+	struct mlxsw_sp_bridge_port *bridge_port;
+	struct mlxsw_sp_bridge_vlan *bridge_vlan;
+
+	bridge_port = mlxsw_sp_bridge_port_find(mlxsw_sp_port->mlxsw_sp->bridge,
+						orig_dev);
+	if (!bridge_port)
+		return 0;
+
+	list_for_each_entry(bridge_vlan, &bridge_port->vlans_list, list) {
+		if (bridge_vlan->vid == vid) {
+			bridge_vlan->state = state;
+			u8 act_state = mlxws_sp_bridge_vlan_stp_actual(bridge_vlan,
+								       bridge_port->stp_state);
+			return mlxsw_sp_port_vid_stp_set(mlxsw_sp_port,
+							 vid, act_state);
+		}
+	}
+
+	return 0;
 }
 
 static int
@@ -1290,6 +1337,12 @@ static int mlxsw_sp_port_attr_set(struct net_device *dev, const void *ctx,
 		err = mlxsw_sp_port_attr_stp_state_set(mlxsw_sp_port,
 						       attr->orig_dev,
 						       attr->u.stp_state);
+		break;
+	case SWITCHDEV_ATTR_ID_PORT_VLAN_STATE:
+		err = mlxsw_sp_port_attr_vlan_state_set(mlxsw_sp_port,
+							attr->orig_dev,
+							attr->u.vlan_state.vid,
+							attr->u.vlan_state.state);
 		break;
 	case SWITCHDEV_ATTR_ID_PORT_PRE_BRIDGE_FLAGS:
 		err = mlxsw_sp_port_attr_br_pre_flags_set(mlxsw_sp_port,
