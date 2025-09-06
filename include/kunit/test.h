@@ -67,7 +67,7 @@ enum kunit_status {
 
 /*
  * Speed Attribute is stored as an enum and separated into categories of
- * speed: very_slowm, slow, and normal. These speeds are relative to
+ * speed: very_slow, slow, and normal. These speeds are relative to
  * other KUnit tests.
  *
  * Note: unset speed attribute acts as default of KUNIT_SPEED_NORMAL.
@@ -530,6 +530,18 @@ static inline char *kunit_kstrdup(struct kunit *test, const char *str, gfp_t gfp
  * See kstrdup_const() and kunit_kmalloc_array() for more information.
  */
 const char *kunit_kstrdup_const(struct kunit *test, const char *str, gfp_t gfp);
+
+/**
+ * kunit_attach_mm() - Create and attach a new mm if it doesn't already exist.
+ *
+ * Allocates a &struct mm_struct and attaches it to @current. In most cases, call
+ * kunit_vm_mmap() without calling kunit_attach_mm() directly. Only necessary when
+ * code under test accesses the mm before executing the mmap (e.g., to perform
+ * additional initialization beforehand).
+ *
+ * Return: 0 on success, -errno on failure.
+ */
+int kunit_attach_mm(void);
 
 /**
  * kunit_vm_mmap() - Allocate KUnit-tracked vm_mmap() area

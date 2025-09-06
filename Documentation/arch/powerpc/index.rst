@@ -12,7 +12,6 @@ powerpc
     bootwrapper
     cpu_families
     cpu_features
-    cxl
     dawr-power9
     dexcr
     dscr
@@ -20,6 +19,7 @@ powerpc
     elf_hwcaps
     elfnote
     firmware-assisted-dump
+    htm
     hvcs
     imc
     isa-versions

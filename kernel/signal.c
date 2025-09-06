@@ -176,9 +176,10 @@ static bool recalc_sigpending_tsk(struct task_struct *t)
 
 void recalc_sigpending(void)
 {
-	if (!recalc_sigpending_tsk(current) && !freezing(current))
-		clear_thread_flag(TIF_SIGPENDING);
-
+	if (!recalc_sigpending_tsk(current) && !freezing(current)) {
+		if (unlikely(test_thread_flag(TIF_SIGPENDING)))
+			clear_thread_flag(TIF_SIGPENDING);
+	}
 }
 EXPORT_SYMBOL(recalc_sigpending);
 
@@ -2179,11 +2180,9 @@ bool do_notify_parent(struct task_struct *tsk, int sig)
 
 	WARN_ON_ONCE(!tsk->ptrace &&
 	       (tsk->group_leader != tsk || !thread_group_empty(tsk)));
-	/*
-	 * Notify for thread-group leaders without subthreads.
-	 */
-	if (thread_group_empty(tsk))
-		do_notify_pidfd(tsk);
+
+	/* ptraced, or group-leader without sub-threads */
+	do_notify_pidfd(tsk);
 
 	if (sig != SIGCHLD) {
 		/*
@@ -3017,7 +3016,7 @@ relock:
 			 * first and our do_group_exit call below will use
 			 * that value and ignore the one we pass it.
 			 */
-			do_coredump(&ksig->info);
+			vfs_coredump(&ksig->info);
 		}
 
 		/*
@@ -4068,6 +4067,7 @@ SYSCALL_DEFINE4(pidfd_send_signal, int, pidfd, int, sig,
 {
 	struct pid *pid;
 	enum pid_type type;
+	int ret;
 
 	/* Enforce flags be set to 0 until we add an extension. */
 	if (flags & ~PIDFD_SEND_SIGNAL_FLAGS)
@@ -4109,7 +4109,10 @@ SYSCALL_DEFINE4(pidfd_send_signal, int, pidfd, int, sig,
 	}
 	}
 
-	return do_pidfd_send_signal(pid, sig, type, info, flags);
+	ret = do_pidfd_send_signal(pid, sig, type, info, flags);
+	put_pid(pid);
+
+	return ret;
 }
 
 static int
@@ -4982,9 +4985,20 @@ static const struct ctl_table signal_debug_table[] = {
 #endif
 };
 
+static const struct ctl_table signal_table[] = {
+	{
+		.procname	= "print-fatal-signals",
+		.data		= &print_fatal_signals,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+};
+
 static int __init init_signal_sysctls(void)
 {
 	register_sysctl_init("debug", signal_debug_table);
+	register_sysctl_init("kernel", signal_table);
 	return 0;
 }
 early_initcall(init_signal_sysctls);

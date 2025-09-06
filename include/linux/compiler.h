@@ -192,9 +192,9 @@ void ftrace_likely_update(struct ftrace_likely_data *f, int val,
 })
 
 #ifdef __CHECKER__
-#define __BUILD_BUG_ON_ZERO_MSG(e, msg) (0)
+#define __BUILD_BUG_ON_ZERO_MSG(e, msg, ...) (0)
 #else /* __CHECKER__ */
-#define __BUILD_BUG_ON_ZERO_MSG(e, msg) ((int)sizeof(struct {_Static_assert(!(e), msg);}))
+#define __BUILD_BUG_ON_ZERO_MSG(e, msg, ...) ((int)sizeof(struct {_Static_assert(!(e), msg);}))
 #endif /* __CHECKER__ */
 
 /* &a[0] degrades to a pointer: a different type from an array */
@@ -225,6 +225,26 @@ void ftrace_likely_update(struct ftrace_likely_data *f, int val,
 #define __must_be_noncstr(p) \
 	__BUILD_BUG_ON_ZERO_MSG(!__is_noncstr(p), \
 				"must be non-C-string (not NUL-terminated)")
+
+/*
+ * Use __typeof_unqual__() when available.
+ *
+ * XXX: Remove test for __CHECKER__ once
+ * sparse learns about __typeof_unqual__().
+ */
+#if CC_HAS_TYPEOF_UNQUAL && !defined(__CHECKER__)
+# define USE_TYPEOF_UNQUAL 1
+#endif
+
+/*
+ * Define TYPEOF_UNQUAL() to use __typeof_unqual__() as typeof
+ * operator when available, to return an unqualified type of the exp.
+ */
+#if defined(USE_TYPEOF_UNQUAL)
+# define TYPEOF_UNQUAL(exp) __typeof_unqual__(exp)
+#else
+# define TYPEOF_UNQUAL(exp) __typeof__(exp)
+#endif
 
 #endif /* __KERNEL__ */
 
@@ -267,14 +287,6 @@ static inline void *offset_to_ptr(const int *off)
 
 #define __ADDRESSABLE(sym) \
 	___ADDRESSABLE(sym, __section(".discard.addressable"))
-
-#define __ADDRESSABLE_ASM(sym)						\
-	.pushsection .discard.addressable,"aw";				\
-	.align ARCH_SEL(8,4);						\
-	ARCH_SEL(.quad, .long) __stringify(sym);			\
-	.popsection;
-
-#define __ADDRESSABLE_ASM_STR(sym) __stringify(__ADDRESSABLE_ASM(sym))
 
 /*
  * This returns a constant expression while determining if an argument is

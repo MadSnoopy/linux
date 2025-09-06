@@ -5,11 +5,13 @@
 //! This module contains the kernel APIs related to synchronisation that have been ported or
 //! wrapped for usage by Rust code in the kernel.
 
-use crate::pin_init;
 use crate::prelude::*;
 use crate::types::Opaque;
+use pin_init;
 
 mod arc;
+pub mod aref;
+pub mod completion;
 mod condvar;
 pub mod lock;
 mod locked_by;
@@ -17,6 +19,7 @@ pub mod poll;
 pub mod rcu;
 
 pub use arc::{Arc, ArcBorrow, UniqueArc};
+pub use completion::Completion;
 pub use condvar::{new_condvar, CondVar, CondVarTimeoutResult};
 pub use lock::global::{global_lock, GlobalGuard, GlobalLock, GlobalLockBackend, GlobalLockedBy};
 pub use lock::mutex::{new_mutex, Mutex, MutexGuard};
@@ -39,12 +42,13 @@ impl LockClassKey {
     /// Initializes a dynamically allocated lock class key. In the common case of using a
     /// statically allocated lock class key, the static_lock_class! macro should be used instead.
     ///
-    /// # Example
+    /// # Examples
     /// ```
-    /// # use kernel::{c_str, stack_pin_init};
+    /// # use kernel::c_str;
     /// # use kernel::alloc::KBox;
     /// # use kernel::types::ForeignOwnable;
     /// # use kernel::sync::{LockClassKey, SpinLock};
+    /// # use pin_init::stack_pin_init;
     ///
     /// let key = KBox::pin_init(LockClassKey::new_dynamic(), GFP_KERNEL)?;
     /// let key_ptr = key.into_foreign();
@@ -92,8 +96,11 @@ impl PinnedDrop for LockClassKey {
 macro_rules! static_lock_class {
     () => {{
         static CLASS: $crate::sync::LockClassKey =
-            // SAFETY: lockdep expects uninitialized memory when it's handed a statically allocated
-            // lock_class_key
+            // Lockdep expects uninitialized memory when it's handed a statically allocated `struct
+            // lock_class_key`.
+            //
+            // SAFETY: `LockClassKey` transparently wraps `Opaque` which permits uninitialized
+            // memory.
             unsafe { ::core::mem::MaybeUninit::uninit().assume_init() };
         $crate::prelude::Pin::static_ref(&CLASS)
     }};
