@@ -402,8 +402,6 @@ static void luo_file_unfreeze_one(struct luo_file_set *file_set,
 
 		luo_file->fh->ops->unfreeze(&args);
 	}
-
-	luo_file->serialized_data = 0;
 }
 
 static void __luo_file_unfreeze(struct luo_file_set *file_set,
@@ -554,17 +552,20 @@ int luo_retrieve_file(struct luo_file_set *file_set, u64 token,
 {
 	struct liveupdate_file_op_args args = {0};
 	struct luo_file *luo_file;
+	bool found = false;
 	int err;
 
 	if (list_empty(&file_set->files_list))
 		return -ENOENT;
 
 	list_for_each_entry(luo_file, &file_set->files_list, list) {
-		if (luo_file->token == token)
+		if (luo_file->token == token) {
+			found = true;
 			break;
+		}
 	}
 
-	if (luo_file->token != token)
+	if (!found)
 		return -ENOENT;
 
 	guard(mutex)(&luo_file->mutex);
