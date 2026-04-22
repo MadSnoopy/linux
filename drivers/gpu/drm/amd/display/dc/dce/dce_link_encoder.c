@@ -102,6 +102,7 @@ static const struct link_encoder_funcs dce110_lnk_enc_funcs = {
 	.enable_dp_output = dce110_link_encoder_enable_dp_output,
 	.enable_dp_mst_output = dce110_link_encoder_enable_dp_mst_output,
 	.enable_lvds_output = dce110_link_encoder_enable_lvds_output,
+	.enable_analog_output = dce110_link_encoder_enable_analog_output,
 	.disable_output = dce110_link_encoder_disable_output,
 	.dp_set_lane_settings = dce110_link_encoder_dp_set_lane_settings,
 	.dp_set_phy_pattern = dce110_link_encoder_dp_set_phy_pattern,
@@ -121,6 +122,33 @@ static const struct link_encoder_funcs dce110_lnk_enc_funcs = {
 	.program_hpd_filter = dce110_program_hpd_filter,
 };
 
+static const struct link_encoder_funcs dce110_lnk_enc_funcs_no_hpd = {
+	.validate_output_with_stream =
+		dce110_link_encoder_validate_output_with_stream,
+	.hw_init = dce110_link_encoder_hw_init,
+	.setup = dce110_link_encoder_setup,
+	.enable_tmds_output = dce110_link_encoder_enable_tmds_output,
+	.enable_dp_output = dce110_link_encoder_enable_dp_output,
+	.enable_dp_mst_output = dce110_link_encoder_enable_dp_mst_output,
+	.enable_lvds_output = dce110_link_encoder_enable_lvds_output,
+	.enable_analog_output = dce110_link_encoder_enable_analog_output,
+	.disable_output = dce110_link_encoder_disable_output,
+	.dp_set_lane_settings = dce110_link_encoder_dp_set_lane_settings,
+	.dp_set_phy_pattern = dce110_link_encoder_dp_set_phy_pattern,
+	.update_mst_stream_allocation_table =
+		dce110_link_encoder_update_mst_stream_allocation_table,
+	.psr_program_dp_dphy_fast_training =
+			dce110_psr_program_dp_dphy_fast_training,
+	.psr_program_secondary_packet = dce110_psr_program_secondary_packet,
+	.connect_dig_be_to_fe = dce110_link_encoder_connect_dig_be_to_fe,
+	.is_dig_enabled = dce110_is_dig_enabled,
+	.destroy = dce110_link_encoder_destroy,
+	.get_max_link_cap = dce110_link_encoder_get_max_link_cap,
+	.get_dig_frontend = dce110_get_dig_frontend,
+	.get_hpd_state = dce110_get_hpd_state,
+	.program_hpd_filter = dce110_program_hpd_filter,
+};
+
 static enum bp_result link_transmitter_control(
 	struct dce110_link_encoder *enc110,
 	struct bp_transmitter_control *cntl)
@@ -131,6 +159,21 @@ static enum bp_result link_transmitter_control(
 	result = bp->funcs->transmitter_control(bp, cntl);
 
 	return result;
+}
+
+static enum bp_result link_dac_encoder_control(
+	struct dce110_link_encoder *link_enc,
+	enum bp_encoder_control_action action,
+	uint32_t pix_clk_100hz)
+{
+	struct dc_bios *bios = link_enc->base.ctx->dc_bios;
+	struct bp_encoder_control encoder_control = {0};
+
+	encoder_control.action = action;
+	encoder_control.engine_id = link_enc->base.analog_engine;
+	encoder_control.pixel_clock = pix_clk_100hz / 10;
+
+	return bios->funcs->encoder_control(bios, &encoder_control);
 }
 
 static void enable_phy_bypass_mode(
@@ -804,6 +847,7 @@ bool dce110_link_encoder_validate_dp_output(
 	const struct dce110_link_encoder *enc110,
 	const struct dc_crtc_timing *crtc_timing)
 {
+	(void)enc110;
 	if (crtc_timing->pixel_encoding == PIXEL_ENCODING_YCBCR420)
 		return false;
 
@@ -849,7 +893,10 @@ void dce110_link_encoder_construct(
 	const struct dc_vbios_funcs *bp_funcs = init_data->ctx->dc_bios->funcs;
 	enum bp_result result = BP_RESULT_OK;
 
-	enc110->base.funcs = &dce110_lnk_enc_funcs;
+	if (hpd_regs)
+		enc110->base.funcs = &dce110_lnk_enc_funcs;
+	else
+		enc110->base.funcs = &dce110_lnk_enc_funcs_no_hpd;
 	enc110->base.ctx = init_data->ctx;
 	enc110->base.id = init_data->encoder;
 	enc110->base.analog_id = init_data->analog_encoder;
@@ -1021,6 +1068,16 @@ void dce110_link_encoder_hw_init(
 	cntl.coherent = false;
 	cntl.hpd_sel = enc110->base.hpd_source;
 
+	if (enc110->base.analog_engine != ENGINE_ID_UNKNOWN) {
+		result = link_dac_encoder_control(enc110, ENCODER_CONTROL_INIT, 0);
+		if (result != BP_RESULT_OK) {
+			DC_LOG_ERROR("%s: Failed to execute VBIOS command table for DAC!\n",
+				__func__);
+			BREAK_TO_DEBUGGER();
+			return;
+		}
+	}
+
 	/* The code below is only applicable to encoders with a digital transmitter. */
 	if (enc110->base.transmitter == TRANSMITTER_UNKNOWN)
 		return;
@@ -1167,6 +1224,22 @@ void dce110_link_encoder_enable_lvds_output(
 	cntl.pixel_clock = pixel_clock;
 
 	result = link_transmitter_control(enc110, &cntl);
+
+	if (result != BP_RESULT_OK) {
+		DC_LOG_ERROR("%s: Failed to execute VBIOS command table!\n",
+			__func__);
+		BREAK_TO_DEBUGGER();
+	}
+}
+
+void dce110_link_encoder_enable_analog_output(
+	struct link_encoder *enc,
+	uint32_t pixel_clock)
+{
+	struct dce110_link_encoder *enc110 = TO_DCE110_LINK_ENC(enc);
+	enum bp_result result;
+
+	result = link_dac_encoder_control(enc110, ENCODER_CONTROL_ENABLE, pixel_clock);
 
 	if (result != BP_RESULT_OK) {
 		DC_LOG_ERROR("%s: Failed to execute VBIOS command table!\n",
@@ -1345,19 +1418,8 @@ void dce110_link_encoder_disable_output(
 	struct bp_transmitter_control cntl = { 0 };
 	enum bp_result result;
 
-	switch (enc->analog_engine) {
-	case ENGINE_ID_DACA:
-		REG_UPDATE(DAC_ENABLE, DAC_ENABLE, 0);
-		break;
-	case ENGINE_ID_DACB:
-		/* DACB doesn't seem to be present on DCE6+,
-		 * although there are references to it in the register file.
-		 */
-		DC_LOG_ERROR("%s DACB is unsupported\n", __func__);
-		break;
-	default:
-		break;
-	}
+	if (enc->analog_engine != ENGINE_ID_UNKNOWN)
+		link_dac_encoder_control(enc110, ENCODER_CONTROL_DISABLE, 0);
 
 	/* The code below only applies to connectors that support digital signals. */
 	if (enc->transmitter == TRANSMITTER_UNKNOWN)
@@ -1804,6 +1866,7 @@ static const struct link_encoder_funcs dce60_lnk_enc_funcs = {
 	.enable_dp_output = dce60_link_encoder_enable_dp_output,
 	.enable_dp_mst_output = dce60_link_encoder_enable_dp_mst_output,
 	.enable_lvds_output = dce110_link_encoder_enable_lvds_output,
+	.enable_analog_output = dce110_link_encoder_enable_analog_output,
 	.disable_output = dce110_link_encoder_disable_output,
 	.dp_set_lane_settings = dce110_link_encoder_dp_set_lane_settings,
 	.dp_set_phy_pattern = dce60_link_encoder_dp_set_phy_pattern,
@@ -1815,6 +1878,33 @@ static const struct link_encoder_funcs dce60_lnk_enc_funcs = {
 	.connect_dig_be_to_fe = dce110_link_encoder_connect_dig_be_to_fe,
 	.enable_hpd = dce110_link_encoder_enable_hpd,
 	.disable_hpd = dce110_link_encoder_disable_hpd,
+	.is_dig_enabled = dce110_is_dig_enabled,
+	.destroy = dce110_link_encoder_destroy,
+	.get_max_link_cap = dce110_link_encoder_get_max_link_cap,
+	.get_dig_frontend = dce110_get_dig_frontend,
+	.get_hpd_state = dce110_get_hpd_state,
+	.program_hpd_filter = dce110_program_hpd_filter,
+};
+
+static const struct link_encoder_funcs dce60_lnk_enc_funcs_no_hpd = {
+	.validate_output_with_stream =
+		dce110_link_encoder_validate_output_with_stream,
+	.hw_init = dce110_link_encoder_hw_init,
+	.setup = dce110_link_encoder_setup,
+	.enable_tmds_output = dce110_link_encoder_enable_tmds_output,
+	.enable_dp_output = dce60_link_encoder_enable_dp_output,
+	.enable_dp_mst_output = dce60_link_encoder_enable_dp_mst_output,
+	.enable_lvds_output = dce110_link_encoder_enable_lvds_output,
+	.enable_analog_output = dce110_link_encoder_enable_analog_output,
+	.disable_output = dce110_link_encoder_disable_output,
+	.dp_set_lane_settings = dce110_link_encoder_dp_set_lane_settings,
+	.dp_set_phy_pattern = dce60_link_encoder_dp_set_phy_pattern,
+	.update_mst_stream_allocation_table =
+		dce110_link_encoder_update_mst_stream_allocation_table,
+	.psr_program_dp_dphy_fast_training =
+			dce110_psr_program_dp_dphy_fast_training,
+	.psr_program_secondary_packet = dce110_psr_program_secondary_packet,
+	.connect_dig_be_to_fe = dce110_link_encoder_connect_dig_be_to_fe,
 	.is_dig_enabled = dce110_is_dig_enabled,
 	.destroy = dce110_link_encoder_destroy,
 	.get_max_link_cap = dce110_link_encoder_get_max_link_cap,
@@ -1835,7 +1925,10 @@ void dce60_link_encoder_construct(
 	const struct dc_vbios_funcs *bp_funcs = init_data->ctx->dc_bios->funcs;
 	enum bp_result result = BP_RESULT_OK;
 
-	enc110->base.funcs = &dce60_lnk_enc_funcs;
+	if (hpd_regs)
+		enc110->base.funcs = &dce60_lnk_enc_funcs;
+	else
+		enc110->base.funcs = &dce60_lnk_enc_funcs_no_hpd;
 	enc110->base.ctx = init_data->ctx;
 	enc110->base.id = init_data->encoder;
 	enc110->base.analog_id = init_data->analog_encoder;

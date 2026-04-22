@@ -1172,7 +1172,7 @@ static int ideapad_dytc_profile_init(struct ideapad_private *priv)
 		return -ENODEV;
 	}
 
-	priv->dytc = kzalloc(sizeof(*priv->dytc), GFP_KERNEL);
+	priv->dytc = kzalloc_obj(*priv->dytc);
 	if (!priv->dytc)
 		return -ENOMEM;
 
@@ -2340,6 +2340,7 @@ static struct wmi_driver ideapad_wmi_driver = {
 		.name = "ideapad_wmi",
 	},
 	.id_table = ideapad_wmi_ids,
+	.min_event_size = sizeof(u32),
 	.probe = ideapad_wmi_probe,
 	.notify = ideapad_wmi_notify,
 };

@@ -284,7 +284,7 @@ restart:
 		 *
 		 * cp_xmit_rm holds a ref while we're sending this message down
 		 * the connection.  We can use this ref while holding the
-		 * send_sem.. rds_send_reset() is serialized with it.
+		 * send_sem.. rds_send_path_reset() is serialized with it.
 		 */
 		if (!rm) {
 			unsigned int len;
@@ -1431,9 +1431,11 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		else
 			queue_delayed_work(cpath->cp_wq, &cpath->cp_send_w, 1);
 		rcu_read_unlock();
+
+		if (ret)
+			goto out;
 	}
-	if (ret)
-		goto out;
+
 	rds_message_put(rm);
 
 	for (ind = 0; ind < vct.indx; ind++)

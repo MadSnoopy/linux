@@ -33,9 +33,9 @@
 #include "amdgpu_ras.h"
 
 /* VA hole for 48bit and 57bit addresses */
-#define AMDGPU_GMC_HOLE_START	(adev->vm_manager.root_level == AMDGPU_VM_PDB3 ?\
+#define AMDGPU_GMC_HOLE_START	(adev->vm_manager.max_level == 4 ?\
 				0x0100000000000000ULL : 0x0000800000000000ULL)
-#define AMDGPU_GMC_HOLE_END	(adev->vm_manager.root_level == AMDGPU_VM_PDB3 ?\
+#define AMDGPU_GMC_HOLE_END	(adev->vm_manager.max_level == 4 ?\
 				0xff00000000000000ULL : 0xffff800000000000ULL)
 
 /*
@@ -45,8 +45,8 @@
  * This mask is used to remove the upper 16bits of the VA and so come up with
  * the linear addr value.
  */
-#define AMDGPU_GMC_HOLE_MASK	(adev->vm_manager.root_level == AMDGPU_VM_PDB3 ?\
-				0x00ffffffffffffffULL : 0x0000ffffffffffffULL)
+#define AMDGPU_GMC_HOLE_MASK	(adev->vm_manager.max_level == 4 ?\
+				0x01ffffffffffffffULL : 0x0000ffffffffffffULL)
 
 /*
  * Ring size as power of two for the log of recent faults.
@@ -93,6 +93,10 @@ enum amdgpu_memory_partition {
 #define AMDGPU_GMC9_FAULT_SOURCE_DATA_READ  0x40
 #define AMDGPU_GMC9_FAULT_SOURCE_DATA_WRITE 0x20
 #define AMDGPU_GMC9_FAULT_SOURCE_DATA_EXE   0x10
+
+#define AMDGPU_GMC121_FAULT_SOURCE_DATA_READ  0x400000
+#define AMDGPU_GMC121_FAULT_SOURCE_DATA_WRITE 0x200000
+#define AMDGPU_GMC121_FAULT_SOURCE_DATA_EXE   0x100000
 
 /*
  * GMC page fault information
@@ -452,7 +456,7 @@ extern void
 amdgpu_gmc_set_vm_fault_masks(struct amdgpu_device *adev, int hub_type,
 			      bool enable);
 
-void amdgpu_gmc_get_vbios_allocations(struct amdgpu_device *adev);
+void amdgpu_gmc_init_vga_resv_regions(struct amdgpu_device *adev);
 
 void amdgpu_gmc_init_pdb0(struct amdgpu_device *adev);
 uint64_t amdgpu_gmc_vram_mc2pa(struct amdgpu_device *adev, uint64_t mc_addr);
@@ -478,4 +482,6 @@ amdgpu_gmc_query_memory_partition(struct amdgpu_device *adev);
 int amdgpu_gmc_init_mem_ranges(struct amdgpu_device *adev);
 void amdgpu_gmc_init_sw_mem_ranges(struct amdgpu_device *adev,
 				   struct amdgpu_mem_partition_info *mem_ranges);
+int amdgpu_gmc_get_vram_info(struct amdgpu_device *adev,
+		int *vram_width, int *vram_type, int *vram_vendor);
 #endif

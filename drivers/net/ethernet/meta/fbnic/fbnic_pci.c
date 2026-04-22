@@ -139,7 +139,7 @@ void fbnic_up(struct fbnic_net *fbn)
 
 	/* Enable Tx/Rx processing */
 	fbnic_napi_enable(fbn);
-	netif_tx_start_all_queues(fbn->netdev);
+	netif_tx_wake_all_queues(fbn->netdev);
 
 	fbnic_service_task_start(fbn);
 
@@ -220,6 +220,9 @@ static void fbnic_service_task(struct work_struct *work)
 
 	fbnic_get_hw_stats32(fbd);
 
+	if (fbd->ps_timeout && fbnic_mac_check_tx_pause(fbd))
+		fbnic_mac_ps_protect_handler(fbd);
+
 	fbnic_fw_check_heartbeat(fbd);
 
 	fbnic_health_check(fbd);
@@ -296,6 +299,8 @@ static int fbnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* Populate driver with hardware-specific info and handlers */
 	fbd->max_num_queues = info->max_num_queues;
 
+	fbd->ps_timeout = FBNIC_MAC_PS_TO_DEFAULT_MS;
+
 	pci_set_master(pdev);
 	pci_save_state(pdev);
 
@@ -311,11 +316,17 @@ static int fbnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto free_irqs;
 	}
 
+	err = fbnic_fw_log_init(fbd);
+	if (err)
+		dev_warn(fbd->dev,
+			 "Unable to initialize firmware log buffer: %d\n",
+			 err);
+
 	err = fbnic_fw_request_mbx(fbd);
 	if (err) {
 		dev_err(&pdev->dev,
 			"Firmware mailbox initialization failure\n");
-		goto free_irqs;
+		goto free_fw_log;
 	}
 
 	/* Send the request to enable the FW logging to host. Note if this
@@ -323,11 +334,7 @@ static int fbnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	 * possible the FW is just too old to support the logging and needs
 	 * to be updated.
 	 */
-	err = fbnic_fw_log_init(fbd);
-	if (err)
-		dev_warn(fbd->dev,
-			 "Unable to initialize firmware log buffer: %d\n",
-			 err);
+	fbnic_fw_log_enable(fbd, true);
 
 	fbnic_devlink_register(fbd);
 	fbnic_devlink_otp_check(fbd, "error detected during probe");
@@ -374,6 +381,8 @@ init_failure_mode:
 	  * firmware updates for fixes.
 	  */
 	return 0;
+free_fw_log:
+	fbnic_fw_log_free(fbd);
 free_irqs:
 	fbnic_free_irqs(fbd);
 err_destroy_health:
@@ -408,8 +417,9 @@ static void fbnic_remove(struct pci_dev *pdev)
 	fbnic_hwmon_unregister(fbd);
 	fbnic_dbg_fbd_exit(fbd);
 	fbnic_devlink_unregister(fbd);
-	fbnic_fw_log_free(fbd);
+	fbnic_fw_log_disable(fbd);
 	fbnic_fw_free_mbx(fbd);
+	fbnic_fw_log_free(fbd);
 	fbnic_free_irqs(fbd);
 
 	fbnic_devlink_health_destroy(fbd);

@@ -676,7 +676,7 @@ static struct mpi3mr_tgt_dev *mpi3mr_alloc_tgtdev(void)
 {
 	struct mpi3mr_tgt_dev *tgtdev;
 
-	tgtdev = kzalloc(sizeof(*tgtdev), GFP_ATOMIC);
+	tgtdev = kzalloc_obj(*tgtdev, GFP_ATOMIC);
 	if (!tgtdev)
 		return NULL;
 	kref_init(&tgtdev->ref_count);
@@ -1710,8 +1710,7 @@ static void mpi3mr_encldev_add_chg_evt_bh(struct mpi3mr_ioc *mrioc,
 		    encl_handle);
 	if (!enclosure_dev && present) {
 		enclosure_dev =
-			kzalloc(sizeof(struct mpi3mr_enclosure_node),
-			    GFP_KERNEL);
+			kzalloc_obj(struct mpi3mr_enclosure_node);
 		if (!enclosure_dev)
 			return;
 		list_add_tail(&enclosure_dev->list,
@@ -2535,8 +2534,7 @@ static void mpi3mr_dev_rmhs_send_tm(struct mpi3mr_ioc *mrioc, u16 handle,
 	} while (retrycount--);
 
 	if (cmd_idx >= MPI3MR_NUM_DEVRMCMD) {
-		delayed_dev_rmhs = kzalloc(sizeof(*delayed_dev_rmhs),
-		    GFP_ATOMIC);
+		delayed_dev_rmhs = kzalloc_obj(*delayed_dev_rmhs, GFP_ATOMIC);
 		if (!delayed_dev_rmhs)
 			return;
 		INIT_LIST_HEAD(&delayed_dev_rmhs->list);
@@ -2677,8 +2675,7 @@ static void mpi3mr_send_event_ack(struct mpi3mr_ioc *mrioc, u8 event,
 	} while (retrycount--);
 
 	if (cmd_idx >= MPI3MR_NUM_EVTACKCMD) {
-		delayed_evtack = kzalloc(sizeof(*delayed_evtack),
-		    GFP_ATOMIC);
+		delayed_evtack = kzalloc_obj(*delayed_evtack, GFP_ATOMIC);
 		if (!delayed_evtack)
 			return;
 		INIT_LIST_HEAD(&delayed_evtack->list);
@@ -3462,8 +3459,15 @@ void mpi3mr_process_op_reply_desc(struct mpi3mr_ioc *mrioc,
 	}
 	scmd = mpi3mr_scmd_from_host_tag(mrioc, host_tag, qidx);
 	if (!scmd) {
-		panic("%s: Cannot Identify scmd for host_tag 0x%x\n",
-		    mrioc->name, host_tag);
+		ioc_err(mrioc, "Cannot Identify scmd for host_tag 0x%x", host_tag);
+		ioc_err(mrioc,
+		    "reply_desc_type(%d) host_tag(%d(0x%04x)): qid(%d): command issued to\n"
+		    "handle(0x%04x) returned with ioc_status(0x%04x), log_info(0x%08x),\n"
+		    "scsi_state(0x%02x), scsi_status(0x%02x), xfer_count(%d), resp_data(0x%08x)\n",
+		    reply_desc_type, host_tag, host_tag, qidx+1, dev_handle, ioc_status,
+		    ioc_loginfo, scsi_state, scsi_status,  xfer_count,
+		    resp_data);
+		mrioc->invalid_io_comp = 1;
 		goto out;
 	}
 	priv = scsi_cmd_priv(scmd);
@@ -4900,7 +4904,7 @@ static int mpi3mr_sdev_init(struct scsi_device *sdev)
 
 	spin_unlock_irqrestore(&mrioc->tgtdev_lock, flags);
 
-	scsi_dev_priv_data = kzalloc(sizeof(*scsi_dev_priv_data), GFP_KERNEL);
+	scsi_dev_priv_data = kzalloc_obj(*scsi_dev_priv_data);
 	if (!scsi_dev_priv_data)
 		return -ENOMEM;
 
@@ -4931,7 +4935,7 @@ static int mpi3mr_target_alloc(struct scsi_target *starget)
 	int retval = 0;
 	struct sas_rphy *rphy = NULL;
 
-	scsi_tgt_priv_data = kzalloc(sizeof(*scsi_tgt_priv_data), GFP_KERNEL);
+	scsi_tgt_priv_data = kzalloc_obj(*scsi_tgt_priv_data);
 	if (!scsi_tgt_priv_data)
 		return -ENOMEM;
 

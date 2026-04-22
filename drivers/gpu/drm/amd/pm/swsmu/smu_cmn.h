@@ -141,7 +141,7 @@ bool smu_cmn_clk_dpm_is_enabled(struct smu_context *smu,
 				enum smu_clk_type clk_type);
 
 int smu_cmn_get_enabled_mask(struct smu_context *smu,
-			     uint64_t *feature_mask);
+			     struct smu_feature_bits *feature_mask);
 
 uint64_t smu_cmn_get_indep_throttler_status(
 					const unsigned long dep_status,
@@ -174,6 +174,9 @@ int smu_cmn_update_table(struct smu_context *smu,
 			 void *table_data,
 			 bool drv2smu);
 
+int smu_cmn_vram_cpy(struct smu_context *smu, void *dst,
+		     const void *src, size_t len);
+
 int smu_cmn_write_watermarks_table(struct smu_context *smu);
 
 int smu_cmn_write_pptable(struct smu_context *smu);
@@ -204,9 +207,11 @@ int smu_cmn_print_pcie_levels(struct smu_context *smu,
 			       struct smu_pcie_table *pcie_table,
 			       uint32_t cur_gen, uint32_t cur_lane,
 			       char *buf, int *offset);
+void smu_cmn_reset_custom_level(struct smu_context *smu);
 
 int smu_cmn_dpm_pcie_gen_idx(int gen);
 int smu_cmn_dpm_pcie_width_idx(int width);
+int smu_cmn_check_fw_version(struct smu_context *smu);
 
 /*SMU gpu metrics */
 

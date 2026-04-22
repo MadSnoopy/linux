@@ -41,6 +41,7 @@
 #include <linux/nfs2.h>
 #include <linux/nfs_fs.h>
 #include <linux/nfs_page.h>
+#include <linux/filelock.h>
 #include <linux/lockd/bind.h>
 #include <linux/freezer.h>
 #include "internal.h"
@@ -217,7 +218,7 @@ static struct nfs_createdata *nfs_alloc_createdata(struct inode *dir,
 {
 	struct nfs_createdata *data;
 
-	data = kmalloc(sizeof(*data), GFP_KERNEL);
+	data = kmalloc_obj(*data);
 
 	if (data != NULL) {
 		data->arg.fh = NFS_FH(dir);

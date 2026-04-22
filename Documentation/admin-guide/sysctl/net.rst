@@ -40,8 +40,8 @@ Table : Subdirectories in /proc/sys/net
  bridge    Bridging              rose       X.25 PLP layer
  core      General parameter     tipc       TIPC
  ethernet  Ethernet protocol     unix       Unix domain sockets
- ipv4      IP version 4          x25        X.25 protocol
- ipv6      IP version 6
+ ipv4      IP version 4          vsock      VSOCK sockets
+ ipv6      IP version 6          x25        X.25 protocol
  ========= =================== = ========== ===================
 
 1. /proc/sys/net/core - Network core options
@@ -551,3 +551,82 @@ originally may have been issued in the correct sequential order.
 If named_timeout is nonzero, failed topology updates will be placed on a defer
 queue until another event arrives that clears the error, or until the timeout
 expires. Value is in milliseconds.
+
+6. /proc/sys/net/vsock - VSOCK sockets
+--------------------------------------
+
+VSOCK sockets (AF_VSOCK) provide communication between virtual machines and
+their hosts. The behavior of VSOCK sockets in a network namespace is determined
+by the namespace's mode (``global`` or ``local``), which controls how CIDs
+(Context IDs) are allocated and how sockets interact across namespaces.
+
+ns_mode
+-------
+
+Read-only. Reports the current namespace's mode, set at namespace creation
+and immutable thereafter.
+
+Values:
+
+	- ``global`` - the namespace shares system-wide CID allocation and
+	  its sockets can reach any VM or socket in any global namespace.
+	  Sockets in this namespace cannot reach sockets in local
+	  namespaces.
+	- ``local`` - the namespace has private CID allocation and its
+	  sockets can only connect to VMs or sockets within the same
+	  namespace.
+
+The init_net mode is always ``global``.
+
+child_ns_mode
+-------------
+
+Controls what mode newly created child namespaces will inherit. At namespace
+creation, ``ns_mode`` is inherited from the parent's ``child_ns_mode``. The
+initial value matches the namespace's own ``ns_mode``.
+
+Values:
+
+	- ``global`` - child namespaces will share system-wide CID allocation
+	  and their sockets will be able to reach any VM or socket in any
+	  global namespace.
+	- ``local`` - child namespaces will have private CID allocation and
+	  their sockets will only be able to connect within their own
+	  namespace.
+
+The first write to ``child_ns_mode`` locks its value. Subsequent writes of the
+same value succeed, but writing a different value returns ``-EBUSY``.
+
+Changing ``child_ns_mode`` only affects namespaces created after the change;
+it does not modify the current namespace or any existing children.
+
+A namespace with ``ns_mode`` set to ``local`` cannot change
+``child_ns_mode`` to ``global`` (returns ``-EPERM``).
+
+g2h_fallback
+------------
+
+Controls whether connections to CIDs not owned by the host-to-guest (H2G)
+transport automatically fall back to the guest-to-host (G2H) transport.
+
+When enabled, if a connect targets a CID that the H2G transport (e.g.
+vhost-vsock) does not serve, or if no H2G transport is loaded at all, the
+connection is routed via the G2H transport (e.g. virtio-vsock) instead. This
+allows a host running both nested VMs (via vhost-vsock) and sibling VMs
+reachable through the hypervisor (e.g. Nitro Enclaves) to address both using
+a single CID space, without requiring applications to set
+``VMADDR_FLAG_TO_HOST``.
+
+When the fallback is taken, ``VMADDR_FLAG_TO_HOST`` is automatically set on
+the remote address so that userspace can determine the path via
+``getpeername()``.
+
+Note: With this sysctl enabled, user space that attempts to talk to a guest
+CID which is not implemented by the H2G transport will create host vsock
+traffic. Environments that rely on H2G-only isolation should set it to 0.
+
+Values:
+
+	- 0 - Connections to CIDs <= 2 or with VMADDR_FLAG_TO_HOST use G2H;
+	  all others use H2G (or fail with ENODEV if H2G is not loaded).
+	- 1 - Connections to CIDs not owned by H2G fall back to G2H. (default)

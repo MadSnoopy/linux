@@ -60,7 +60,7 @@ int print_task_context_switch_counts;
 	}
 
 /* Maximum size of response requested or message sent */
-#define MAX_MSG_SIZE	1024
+#define MAX_MSG_SIZE	2048
 /* Maximum number of cpus expected to be specified in a cpumask */
 #define MAX_CPUS	32
 
@@ -113,6 +113,32 @@ static int create_nl_socket(int protocol)
 error:
 	close(fd);
 	return -1;
+}
+
+static int recv_taskstats_msg(int sd, struct msgtemplate *msg)
+{
+	struct sockaddr_nl nladdr;
+	struct iovec iov = {
+		.iov_base = msg,
+		.iov_len = sizeof(*msg),
+	};
+	struct msghdr hdr = {
+		.msg_name = &nladdr,
+		.msg_namelen = sizeof(nladdr),
+		.msg_iov = &iov,
+		.msg_iovlen = 1,
+	};
+	int ret;
+
+	ret = recvmsg(sd, &hdr, 0);
+	if (ret < 0)
+		return -1;
+	if (hdr.msg_flags & MSG_TRUNC) {
+		errno = EMSGSIZE;
+		return -1;
+	}
+
+	return ret;
 }
 
 
@@ -196,20 +222,20 @@ static int get_family_id(int sd)
 #define delay_ms(t) (t / 1000000ULL)
 
 /*
- * Format timespec64 to human readable string (YYYY-MM-DD HH:MM:SS)
+ * Format __kernel_timespec to human readable string (YYYY-MM-DD HH:MM:SS)
  * Returns formatted string or "N/A" if timestamp is zero
  */
-static const char *format_timespec64(struct timespec64 *ts)
+static const char *format_timespec(struct __kernel_timespec *ts)
 {
 	static char buffer[32];
 	struct tm tm_info;
-	time_t time_sec;
+	__kernel_time_t time_sec;
 
 	/* Check if timestamp is zero (not set) */
 	if (ts->tv_sec == 0 && ts->tv_nsec == 0)
 		return "N/A";
 
-	time_sec = (time_t)ts->tv_sec;
+	time_sec = ts->tv_sec;
 
 	/* Use thread-safe localtime_r */
 	if (localtime_r(&time_sec, &tm_info) == NULL)
@@ -257,7 +283,7 @@ static const char *format_timespec64(struct timespec64 *ts)
 				average_ms((double)(t)->cpu_delay_total, (t)->cpu_count), \
 				delay_ms((double)(t)->cpu_delay_max), \
 				delay_ms((double)(t)->cpu_delay_min), \
-				format_timespec64(&(t)->cpu_delay_max_ts)); \
+				format_timespec(&(t)->cpu_delay_max_ts)); \
 		} else if (version >= 16) { \
 			printf("%-10s%15s%15s%15s%15s%15s%15s%15s\n", \
 				"CPU", "count", "real total", "virtual total", \
@@ -316,7 +342,7 @@ static const char *format_timespec64(struct timespec64 *ts)
 				average_ms((double)(t)->total, (t)->count), \
 				delay_ms((double)(t)->max), \
 				delay_ms((double)(t)->min), \
-				format_timespec64(&(t)->max_ts)); \
+				format_timespec(&(t)->max_ts)); \
 		} else if (version >= 16) { \
 			printf("%-10s%15s%15s%15s%15s%15s\n", \
 				name, "count", "delay total", "delay average", \
@@ -633,12 +659,16 @@ int main(int argc, char *argv[])
 	}
 
 	do {
-		rep_len = recv(nl_sd, &msg, sizeof(msg), 0);
+		rep_len = recv_taskstats_msg(nl_sd, &msg);
 		PRINTF("received %d bytes\n", rep_len);
 
 		if (rep_len < 0) {
-			fprintf(stderr, "nonfatal reply error: errno %d\n",
-				errno);
+			if (errno == EMSGSIZE)
+				fprintf(stderr,
+					"dropped truncated taskstats netlink message, please increase MAX_MSG_SIZE\n");
+			else
+				fprintf(stderr, "nonfatal reply error: errno %d\n",
+					errno);
 			continue;
 		}
 		if (msg.n.nlmsg_type == NLMSG_ERROR ||
@@ -680,6 +710,9 @@ int main(int argc, char *argv[])
 							printf("TGID\t%d\n", rtid);
 						break;
 					case TASKSTATS_TYPE_STATS:
+						PRINTF("version %u\n",
+						       ((struct taskstats *)
+							NLA_DATA(na))->version);
 						if (print_delays)
 							print_delayacct((struct taskstats *) NLA_DATA(na));
 						if (print_io_accounting)

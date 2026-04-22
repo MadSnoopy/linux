@@ -4,6 +4,7 @@
  * Copyright (C) 2022 Christoph Hellwig.
  */
 
+#include <linux/blk_types.h>
 #include <linux/bio.h>
 #include "bio.h"
 #include "ctree.h"
@@ -350,11 +351,18 @@ static void btrfs_check_read_bio(struct btrfs_bio *bbio, struct btrfs_device *de
 
 static void btrfs_log_dev_io_error(const struct bio *bio, struct btrfs_device *dev)
 {
+	blk_status_t sts = bio->bi_status;
+
 	if (!dev || !dev->bdev)
 		return;
-	if (bio->bi_status != BLK_STS_IOERR && bio->bi_status != BLK_STS_TARGET)
+	if (unlikely(sts == BLK_STS_OK))
 		return;
-
+	if (unlikely(sts != BLK_STS_IOERR && sts != BLK_STS_TARGET &&
+		     sts != BLK_STS_MEDIUM && sts != BLK_STS_PROTECTION)) {
+		btrfs_warn_rl(dev->fs_info, "bdev %s unexpected block io error: %d",
+			      btrfs_dev_name(dev), sts);
+		return;
+	}
 	if (btrfs_op(bio) == BTRFS_MAP_WRITE)
 		btrfs_dev_stat_inc_and_print(dev, BTRFS_DEV_STAT_WRITE_ERRS);
 	else if (!(bio->bi_opf & REQ_RAHEAD))
@@ -709,7 +717,7 @@ static bool btrfs_wq_submit_bio(struct btrfs_bio *bbio,
 	struct btrfs_fs_info *fs_info = bbio->inode->root->fs_info;
 	struct async_submit_bio *async;
 
-	async = kmalloc(sizeof(*async), GFP_NOFS);
+	async = kmalloc_obj(*async, GFP_NOFS);
 	if (!async)
 		return false;
 
@@ -934,7 +942,6 @@ int btrfs_repair_io_failure(struct btrfs_fs_info *fs_info, u64 ino, u64 fileoff,
 	struct bio *bio = NULL;
 	int ret = 0;
 
-	ASSERT(!(fs_info->sb->s_flags & SB_RDONLY));
 	BUG_ON(!mirror_num);
 
 	/* Basic alignment checks. */
@@ -945,6 +952,13 @@ int btrfs_repair_io_failure(struct btrfs_fs_info *fs_info, u64 ino, u64 fileoff,
 	ASSERT(length <= BTRFS_MAX_BLOCKSIZE);
 	ASSERT(step <= length);
 	ASSERT(is_power_of_2(step));
+
+	/*
+	 * The fs either mounted RO or hit critical errors, no need
+	 * to continue repairing.
+	 */
+	if (unlikely(sb_rdonly(fs_info->sb)))
+		return 0;
 
 	if (btrfs_repair_one_zone(fs_info, logical))
 		return 0;

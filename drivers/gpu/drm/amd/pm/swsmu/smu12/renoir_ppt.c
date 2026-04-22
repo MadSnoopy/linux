@@ -157,16 +157,16 @@ static int renoir_init_smc_tables(struct smu_context *smu)
 	SMU_TABLE_INIT(tables, SMU_TABLE_SMU_METRICS, sizeof(SmuMetrics_t),
 		PAGE_SIZE, AMDGPU_GEM_DOMAIN_VRAM);
 
-	smu_table->clocks_table = kzalloc(sizeof(DpmClocks_t), GFP_KERNEL);
+	smu_table->clocks_table = kzalloc_obj(DpmClocks_t);
 	if (!smu_table->clocks_table)
 		goto err0_out;
 
-	smu_table->metrics_table = kzalloc(sizeof(SmuMetrics_t), GFP_KERNEL);
+	smu_table->metrics_table = kzalloc_obj(SmuMetrics_t);
 	if (!smu_table->metrics_table)
 		goto err1_out;
 	smu_table->metrics_time = 0;
 
-	smu_table->watermarks_table = kzalloc(sizeof(Watermarks_t), GFP_KERNEL);
+	smu_table->watermarks_table = kzalloc_obj(Watermarks_t);
 	if (!smu_table->watermarks_table)
 		goto err2_out;
 
@@ -1434,11 +1434,11 @@ static int renoir_gfx_state_change_set(struct smu_context *smu, uint32_t state)
 }
 
 static int renoir_get_enabled_mask(struct smu_context *smu,
-				   uint64_t *feature_mask)
+				   struct smu_feature_bits *feature_mask)
 {
 	if (!feature_mask)
 		return -EINVAL;
-	memset(feature_mask, 0xff, sizeof(*feature_mask));
+	smu_feature_bits_fill(feature_mask);
 
 	return 0;
 }
@@ -1457,7 +1457,7 @@ static const struct pptable_funcs renoir_ppt_funcs = {
 	.get_power_profile_mode = renoir_get_power_profile_mode,
 	.read_sensor = renoir_read_sensor,
 	.check_fw_status = smu_v12_0_check_fw_status,
-	.check_fw_version = smu_v12_0_check_fw_version,
+	.check_fw_version = smu_cmn_check_fw_version,
 	.powergate_sdma = smu_v12_0_powergate_sdma,
 	.set_gfx_cgpg = smu_v12_0_set_gfx_cgpg,
 	.gfx_off_control = smu_v12_0_gfx_off_control,

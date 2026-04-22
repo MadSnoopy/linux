@@ -713,7 +713,7 @@ static int wbt_data_dir(const struct request *rq)
 
 static struct rq_wb *wbt_alloc(void)
 {
-	struct rq_wb *rwb = kzalloc(sizeof(*rwb), GFP_KERNEL);
+	struct rq_wb *rwb = kzalloc_obj(*rwb);
 
 	if (!rwb)
 		return NULL;
@@ -776,22 +776,24 @@ void wbt_init_enable_default(struct gendisk *disk)
 {
 	struct request_queue *q = disk->queue;
 	struct rq_wb *rwb;
+	unsigned int memflags;
 
 	if (!__wbt_enable_default(disk))
 		return;
 
 	rwb = wbt_alloc();
-	if (WARN_ON_ONCE(!rwb))
+	if (!rwb)
 		return;
 
-	if (WARN_ON_ONCE(wbt_init(disk, rwb))) {
+	if (wbt_init(disk, rwb)) {
+		pr_warn("%s: failed to enable wbt\n", disk->disk_name);
 		wbt_free(rwb);
 		return;
 	}
 
-	mutex_lock(&q->debugfs_mutex);
+	memflags = blk_debugfs_lock(q);
 	blk_mq_debugfs_register_rq_qos(q);
-	mutex_unlock(&q->debugfs_mutex);
+	blk_debugfs_unlock(q, memflags);
 }
 
 static u64 wbt_default_latency_nsec(struct request_queue *q)
@@ -1015,9 +1017,10 @@ int wbt_set_lat(struct gendisk *disk, s64 val)
 	blk_mq_unquiesce_queue(q);
 out:
 	blk_mq_unfreeze_queue(q, memflags);
-	mutex_lock(&q->debugfs_mutex);
+
+	memflags = blk_debugfs_lock(q);
 	blk_mq_debugfs_register_rq_qos(q);
-	mutex_unlock(&q->debugfs_mutex);
+	blk_debugfs_unlock(q, memflags);
 
 	return ret;
 }

@@ -736,6 +736,16 @@ union pr_hw_flags {
 	uint32_t u32All;
 };
 
+/**
+ * Definition of Panel Replay ML Activity Options
+ */
+enum pr_ml_activity_option {
+	OPTION_DEFAULT	= 0x00, // VESA Option Default (1C)
+	OPTION_1A		= 0x01, // VESA Option 1A
+	OPTION_1B		= 0x02, // VESA Option 1B
+	OPTION_1C		= 0x03, // VESA Option 1C
+};
+
 union fw_assisted_mclk_switch_version {
 	struct {
 		uint8_t minor : 5;
@@ -899,7 +909,8 @@ union dmub_fw_meta_feature_bits {
 	struct {
 		uint32_t shared_state_link_detection : 1; /**< 1 supports link detection via shared state */
 		uint32_t cursor_offload_v1_support: 1; /**< 1 supports cursor offload */
-		uint32_t reserved : 30;
+		uint32_t inbox0_lock_support: 1; /**< 1 supports inbox0 lock mechanism */
+		uint32_t reserved : 29;
 	} bits; /**< status bits */
 	uint32_t all; /**< 32-bit access to status bits */
 };
@@ -1525,14 +1536,12 @@ enum dmub_gpint_command {
 	 *       1 - Enable ips measurement
 	 */
 	DMUB_GPINT__IPS_RESIDENCY = 121,
-
 	/**
 	 * DESC: Enable measurements for various task duration
 	 * ARGS: 0 - Disable measurement
 	 *       1 - Enable measurement
 	 */
 	DMUB_GPINT__TRACE_DMUB_WAKE_ACTIVITY = 123,
-
 	/**
 	 * DESC: Gets IPS residency in microseconds
 	 * ARGS: 0 - Return IPS1 residency
@@ -1542,21 +1551,18 @@ enum dmub_gpint_command {
 	 * RETURN: Total residency in microseconds - lower 32 bits
 	 */
 	DMUB_GPINT__GET_IPS_RESIDENCY_DURATION_US_LO = 124,
-
 	/**
 	 * DESC: Gets IPS1 histogram counts
 	 * ARGS: Bucket index
 	 * RETURN: Total count for the bucket
 	 */
 	DMUB_GPINT__GET_IPS1_HISTOGRAM_COUNTER = 125,
-
 	/**
 	 * DESC: Gets IPS2 histogram counts
 	 * ARGS: Bucket index
 	 * RETURN: Total count for the bucket
 	 */
 	DMUB_GPINT__GET_IPS2_HISTOGRAM_COUNTER = 126,
-
 	/**
 	 * DESC: Gets IPS residency
 	 * ARGS: 0 - Return IPS1 residency
@@ -1566,21 +1572,18 @@ enum dmub_gpint_command {
 	 * RETURN: Total residency in milli-percent.
 	 */
 	DMUB_GPINT__GET_IPS_RESIDENCY_PERCENT = 127,
-
 	/**
 	 * DESC: Gets IPS1_RCG histogram counts
 	 * ARGS: Bucket index
 	 * RETURN: Total count for the bucket
 	 */
 	DMUB_GPINT__GET_IPS1_RCG_HISTOGRAM_COUNTER = 128,
-
 	/**
 	 * DESC: Gets IPS1_ONO2_ON histogram counts
 	 * ARGS: Bucket index
 	 * RETURN: Total count for the bucket
 	 */
 	DMUB_GPINT__GET_IPS1_ONO2_ON_HISTOGRAM_COUNTER = 129,
-
 	/**
 	 * DESC: Gets IPS entry counter during residency measurement
 	 * ARGS: 0 - Return IPS1 entry counts
@@ -1590,7 +1593,6 @@ enum dmub_gpint_command {
 	 * RETURN: Entry counter for selected IPS mode
 	 */
 	DMUB_GPINT__GET_IPS_RESIDENCY_ENTRY_COUNTER = 130,
-
 	/**
 	 * DESC: Gets IPS inactive residency in microseconds
 	 * ARGS: 0 - Return IPS1_MAX residency
@@ -1600,7 +1602,6 @@ enum dmub_gpint_command {
 	 * RETURN: Total inactive residency in microseconds - lower 32 bits
 	 */
 	DMUB_GPINT__GET_IPS_INACTIVE_RESIDENCY_DURATION_US_LO = 131,
-
 	/**
 	 * DESC: Gets IPS inactive residency in microseconds
 	 * ARGS: 0 - Return IPS1_MAX residency
@@ -1610,7 +1611,6 @@ enum dmub_gpint_command {
 	 * RETURN: Total inactive residency in microseconds - upper 32 bits
 	 */
 	DMUB_GPINT__GET_IPS_INACTIVE_RESIDENCY_DURATION_US_HI = 132,
-
 	/**
 	 * DESC: Gets IPS residency in microseconds
 	 * ARGS: 0 - Return IPS1 residency
@@ -1628,6 +1628,11 @@ enum dmub_gpint_command {
 	 * DESC: Initiates IPS wake sequence.
 	 */
 	DMUB_GPINT__IPS_DEBUG_WAKE = 137,
+	/**
+	 * DESC: Do panel power off sequence
+	 * ARGS: 1 - Power off
+	 */
+	DMUB_GPINT__PANEL_POWER_OFF_SEQ = 138,
 };
 
 /**
@@ -1664,7 +1669,7 @@ union dmub_inbox0_cmd_lock_hw {
 
 		uint32_t lock: 1;			/**< Lock */
 		uint32_t should_release: 1;		/**< Release */
-		uint32_t reserved: 7;			/**< Reserved for extending more clients, HW, etc. */
+		uint32_t reserved: 7; 			/**< Reserved for extending more clients, HW, etc. */
 	} bits;
 	uint32_t all;
 };
@@ -1882,6 +1887,15 @@ enum dmub_cmd_type {
 	 */
 	DMUB_CMD__PR = 94,
 
+	/**
+	 * Command type used for all IHC commands.
+	 */
+	DMUB_CMD__IHC = 95,
+
+	/**
+	 * Command type use for boot time crc commands.
+	 */
+	DMUB_CMD__BOOT_TIME_CRC = 96,
 
 	/**
 	 * Command type use for VBIOS shared commands.
@@ -2595,9 +2609,9 @@ struct dmub_fams2_stream_static_state {
 	uint8_t allow_to_target_delay_otg_vlines; // time from allow vline to target vline
 	union {
 		struct {
-			uint8_t is_drr: 1; // stream is DRR enabled
-			uint8_t clamp_vtotal_min: 1; // clamp vtotal to min instead of nominal
-			uint8_t min_ttu_vblank_usable: 1; // if min ttu vblank is above wm, no force pstate is needed in blank
+			uint8_t is_drr : 1; // stream is DRR enabled
+			uint8_t clamp_vtotal_min : 1; // clamp vtotal to min instead of nominal
+			uint8_t min_ttu_vblank_usable : 1; // if min ttu vblank is above wm, no force pstate is needed in blank
 		} bits;
 		uint8_t all;
 	} config;
@@ -4398,6 +4412,7 @@ enum dmub_cmd_panel_replay_type {
 enum dmub_cmd_panel_replay_state_update_subtype {
 	PR_STATE_UPDATE_COASTING_VTOTAL = 0x1,
 	PR_STATE_UPDATE_SYNC_MODE = 0x2,
+	PR_STATE_UPDATE_RUNTIME_FLAGS = 0x3,
 };
 
 enum dmub_cmd_panel_replay_general_subtype {
@@ -4421,6 +4436,8 @@ enum dmub_cmd_replay_general_subtype {
 	REPLAY_GENERAL_CMD_SET_LOW_RR_ACTIVATE,
 	REPLAY_GENERAL_CMD_VIDEO_CONFERENCING,
 	REPLAY_GENERAL_CMD_SET_CONTINUOUSLY_RESYNC,
+	REPLAY_GENERAL_CMD_SET_COASTING_VTOTAL_WITHOUT_FRAME_UPDATE,
+	REPLAY_GENERAL_CMD_LIVE_CAPTURE_WITH_CVT,
 };
 
 struct dmub_alpm_auxless_data {
@@ -4639,6 +4656,18 @@ struct dmub_rb_cmd_replay_enable_data {
 	 * This does not support HDMI/DP2 for now.
 	 */
 	uint8_t phy_rate;
+	/**
+	 * @hpo_stream_enc_inst: HPO stream encoder instance
+	 */
+	uint8_t hpo_stream_enc_inst;
+	/**
+	 * @hpo_link_enc_inst: HPO link encoder instance
+	 */
+	uint8_t hpo_link_enc_inst;
+	/**
+	 * @pad: Align structure to 4 byte boundary.
+	 */
+	uint8_t pad[2];
 };
 
 /**
@@ -4944,6 +4973,52 @@ union dmub_replay_cmd_set {
 };
 
 /**
+ * IHC command sub-types.
+ */
+enum dmub_cmd_ihc_type {
+	/**
+	 * Set DIG HDCP interrupt destination.
+	 */
+	DMUB_CMD__IHC_SET_DIG_HDCP_INTERRUPT_DEST = 0,
+};
+
+/**
+ * Data passed from driver to FW in a DMUB_CMD__IHC command.
+ */
+struct dmub_cmd_ihc_data {
+	/**
+	 * DIG engine ID (0-3).
+	 */
+	uint8_t dig_id;
+	/**
+	 * 1 = route to DMU, 0 = route to CPU.
+	 */
+	uint8_t to_dmu : 1;
+	/**
+	 * Reserved bits.
+	 */
+	uint8_t reserved : 7;
+	/**
+	 * Padding.
+	 */
+	uint8_t pad[2];
+};
+
+/**
+ * Definition of a DMUB_CMD__IHC command.
+ */
+struct dmub_rb_cmd_ihc {
+	/**
+	 * Command header.
+	 */
+	struct dmub_cmd_header header;
+	/**
+	 * IHC command data.
+	 */
+	struct dmub_cmd_ihc_data data;
+};
+
+/**
  * SMART POWER OLED command sub-types.
  */
 enum dmub_cmd_smart_power_oled_type {
@@ -5206,8 +5281,8 @@ enum dmub_cmd_lsdma_type {
 	 */
 	DMUB_CMD__LSDMA_LINEAR_COPY = 1,
 	/**
-	 * LSDMA copies data from source to destination linearly in sub window
-	 */
+	* LSDMA copies data from source to destination linearly in sub window
+	*/
 	DMUB_CMD__LSDMA_LINEAR_SUB_WINDOW_COPY = 2,
 	/**
 	 * Send the tiled-to-tiled copy command
@@ -6197,6 +6272,7 @@ struct dmub_cmd_edid_cea_amd_vsdb {
 	uint16_t amd_vsdb_version;	/**< AMD VSDB version */
 	uint16_t min_frame_rate;	/**< Maximum frame rate */
 	uint16_t max_frame_rate;	/**< Minimum frame rate */
+	uint8_t freesync_mccs_vcp_code; /**< Freesync MCCS VCP code */
 };
 
 /**
@@ -6691,6 +6767,13 @@ struct dmub_rb_cmd_pr_copy_settings {
 	struct dmub_cmd_pr_copy_settings_data data;
 };
 
+union dmub_pr_runtime_flags {
+	struct {
+		uint32_t disable_abm_optimization : 1; // Disable ABM optimization for PR
+	} bitfields;
+	uint32_t u32All;
+};
+
 struct dmub_cmd_pr_update_state_data {
 	/**
 	 * Panel Instance.
@@ -6709,6 +6792,8 @@ struct dmub_cmd_pr_update_state_data {
 	 */
 	uint32_t coasting_vtotal;
 	uint32_t sync_mode;
+
+	union dmub_pr_runtime_flags pr_runtime_flags;
 };
 
 struct dmub_cmd_pr_general_cmd_data {
@@ -6758,6 +6843,29 @@ struct dmub_rb_cmd_pr_general_cmd {
 	 * Data passed from driver to FW in a DMUB_CMD__PR_GENERAL_CMD command.
 	 */
 	struct dmub_cmd_pr_general_cmd_data data;
+};
+
+/**
+ * Command type of a DMUB_CMD__BOOT_TIME_CRC command
+ */
+enum dmub_cmd_boot_time_crc_type {
+	DMUB_CMD__BOOT_TIME_CRC_INIT_MEM = 0
+};
+
+/**
+ * Data passed from driver to FW in a DMUB_CMD__BOOT_TIME_CRC_INIT command.
+ */
+struct dmub_cmd_boot_time_crc_init_data {
+	union dmub_addr buffer_addr;
+	uint32_t buffer_size;
+};
+
+/**
+ * Definition of a DMUB_CMD__BOOT_TIME_CRC_INIT command.
+ */
+struct dmub_rb_cmd_boot_time_crc_init {
+	struct dmub_cmd_header header;
+	struct dmub_cmd_boot_time_crc_init_data data;
 };
 
 /**
@@ -7117,6 +7225,14 @@ union dmub_rb_cmd {
 	struct dmub_rb_cmd_pr_update_state pr_update_state;
 
 	struct dmub_rb_cmd_pr_general_cmd pr_general_cmd;
+	/**
+	 * Definition of a DMUB_CMD__IHC command.
+	 */
+	struct dmub_rb_cmd_ihc ihc;
+	/**
+	 * Definition of a DMUB_CMD__BOOT_TIME_CRC_INIT command.
+	 */
+	struct dmub_rb_cmd_boot_time_crc_init boot_time_crc_init;
 };
 
 /**

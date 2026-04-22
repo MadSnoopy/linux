@@ -171,7 +171,7 @@ ssize_t orangefs_inode_getxattr(struct inode *inode, const char *name,
 				     " does not exist!\n",
 				     get_khandle_from_ino(inode),
 				     (char *)new_op->upcall.req.getxattr.key);
-			cx = kmalloc(sizeof *cx, GFP_KERNEL);
+			cx = kmalloc_obj(*cx);
 			if (cx) {
 				strscpy(cx->key, name);
 				cx->length = -1;
@@ -188,6 +188,10 @@ ssize_t orangefs_inode_getxattr(struct inode *inode, const char *name,
 	 * Length returned includes null terminator.
 	 */
 	length = new_op->downcall.resp.getxattr.val_sz;
+	if (length < 0 || length > ORANGEFS_MAX_XATTR_VALUELEN) {
+		ret = -EIO;
+		goto out_release_op;
+	}
 
 	/*
 	 * Just return the length of the queried attribute.
@@ -225,7 +229,7 @@ ssize_t orangefs_inode_getxattr(struct inode *inode, const char *name,
 		cx->length = length;
 		cx->timeout = jiffies + HZ;
 	} else {
-		cx = kmalloc(sizeof *cx, GFP_KERNEL);
+		cx = kmalloc_obj(*cx);
 		if (cx) {
 			strscpy(cx->key, name);
 			memcpy(cx->val, buffer, length);

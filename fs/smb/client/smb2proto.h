@@ -14,7 +14,6 @@
 #include <linux/key-type.h>
 #include "cached_dir.h"
 
-struct statfs;
 struct smb_rqst;
 
 /*
@@ -24,6 +23,12 @@ struct smb_rqst;
  */
 int map_smb2_to_linux_error(char *buf, bool log_err);
 int smb2_init_maperror(void);
+#if IS_ENABLED(CONFIG_SMB_KUNIT_TESTS)
+const struct status_to_posix_error *smb2_get_err_map_test(__u32 smb2_status);
+extern const struct status_to_posix_error *smb2_error_map_table_test;
+extern unsigned int smb2_error_map_num;
+#endif
+
 int smb2_check_message(char *buf, unsigned int pdu_len, unsigned int len,
 		       struct TCP_Server_Info *server);
 unsigned int smb2_calc_size(void *buf);
@@ -42,7 +47,7 @@ struct mid_q_entry *smb2_setup_async_request(struct TCP_Server_Info *server,
 					     struct smb_rqst *rqst);
 struct cifs_tcon *smb2_find_smb_tcon(struct TCP_Server_Info *server,
 				     __u64 ses_id, __u32  tid);
-__le32 smb2_get_lease_state(struct cifsInodeInfo *cinode);
+__le32 smb2_get_lease_state(struct cifsInodeInfo *cinode, unsigned int oplock);
 bool smb2_is_valid_oplock_break(char *buffer, struct TCP_Server_Info *server);
 int smb3_handle_read_data(struct TCP_Server_Info *server,
 			  struct mid_q_entry *mid);
@@ -167,9 +172,6 @@ int SMB2_flush_init(const unsigned int xid, struct smb_rqst *rqst,
 		    struct cifs_tcon *tcon, struct TCP_Server_Info *server,
 		    u64 persistent_fid, u64 volatile_fid);
 void SMB2_flush_free(struct smb_rqst *rqst);
-int SMB311_posix_query_info(const unsigned int xid, struct cifs_tcon *tcon,
-			    u64 persistent_fid, u64 volatile_fid,
-			    struct smb311_posix_qinfo *data, u32 *plen);
 int SMB2_query_info(const unsigned int xid, struct cifs_tcon *tcon,
 		    u64 persistent_fid, u64 volatile_fid,
 		    struct smb2_file_all_info *data);
